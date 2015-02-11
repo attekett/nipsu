@@ -1,7 +1,7 @@
 # nipsu
 Crash repro minifier for ASan-instrumented commandline tools.
 
-Usage: node minifier.js -i <input-file> -temp <temp-dir> -o <output-dir> <target-bin> @@
+Usage: node minifier.js -i \<input-file\> -temp \<temp-dir\> -o \<output-dir\> \<target-bin\> @@
 
 @@ will be replaced with temp-file name.(Yes. I stole that expression from afl.)
 
