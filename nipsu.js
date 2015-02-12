@@ -129,7 +129,7 @@ function minimizeFurther(){
 		}
 		else{
 			console.log('\nFinished')
-			var fileName=path.dirname(config.inputFile)+'/'+path.basename(config.inputFile)+'-min'+path.extname(config.inputFile)
+			var fileName=config.outputDirectory+'/'+path.basename(config.inputFile)+'-min'+path.extname(config.inputFile)
 			fs.writeFileSync(fileName, previousIteration.join(currentDelimiter));
 			process.exit(1)
 		}
