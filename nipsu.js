@@ -112,7 +112,7 @@ function minimizeFurther(){
 	}
 	if(lastFalse<=0){
 		crashCount=0
-		if(config.chunks.length>0){		
+		if(config.chunks.length>0 || currentConfig.delimiters.length!=0){		
 			if(currentConfig.delimiters.length==0){
 				currentConfig=JSON.parse(JSON.stringify(config))
 				chunkSize=config.chunks.pop()
@@ -129,7 +129,7 @@ function minimizeFurther(){
 		}
 		else{
 			console.log('\nFinished')
-			var fileName=config.outputDirectory+'/'+path.basename(config.inputFile)+'-min'+path.extname(config.inputFile)
+			var fileName=config.outputDirectory+'/'+crashFingerPrint+path.extname(config.inputFile)
 			fs.writeFileSync(fileName, previousIteration.join(currentDelimiter));
 			process.exit(1)
 		}
@@ -170,9 +170,11 @@ function minimize(){
 					previousIteration=cloneArray(currentIteration)
 				}
 				else{
-					console.log('Different crash.')
-					console.log('Saving different crash to :'+config.outputDirectory+'/'+crash+path.extname(config.inputFile))
-					fs.writeFileSync(config.outputDirectory+'/'+crash+path.extname(config.inputFile),testCase)	
+					if(!fs.existsSync(config.outputDirectory+'/'+crash+path.extname(config.inputFile))){
+						console.log('Different crash.')
+						console.log('Saving different crash to :'+config.outputDirectory+'/'+crash+path.extname(config.inputFile))
+						fs.writeFileSync(config.outputDirectory+'/'+crash+path.extname(config.inputFile),testCase)	
+					}
 				}
 			}else if(crashFingerPrint==""){
 				console.log("Crash didn't reproduce... Try: "+triesWithoutCrash++)
