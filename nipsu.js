@@ -162,6 +162,10 @@ function minimize(){
 			if(crash!==null){
 				if(crashFingerPrint==""){
 					console.log('\nInitial crash: '+crash)
+					if(fs.existsSync(config.outputDirectory+'/'+crash+path.extname(config.inputFile))){
+						console.log('We already have this crash in output directory. Exiting...')
+						process.exit()	
+					}
 					crashFingerPrint=crash
 					previousIteration=cloneArray(currentIteration)
 				}
