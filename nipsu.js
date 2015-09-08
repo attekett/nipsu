@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-var spawnTarget=require('./spawn.js')
 var fs=require('fs')
 var path=require('path')
 
@@ -16,13 +15,17 @@ var config={
 	debug:process.argv.indexOf('--debug')+1 && true || undefined,
 	inputFile:(process.argv.indexOf('-i')+1 && path.resolve(process.argv[process.argv.indexOf('-i')+1])) || undefined,
 	outputDirectory:(process.argv.indexOf('-o')+1 && path.resolve(process.argv[process.argv.indexOf('-o')+1])+'/') || undefined,
-	timeout:(process.argv.indexOf('-t')+1 && (process.argv[process.argv.indexOf('-t')+1])*1000) || 1000,
+	timeout:(process.argv.indexOf('-t')+1 && (process.argv[process.argv.indexOf('-t')+1])*1000) || 2000,
 	delimiters:(process.argv.indexOf('-d')+1 && (process.argv[process.argv.indexOf('-d')+1]).split(',')) || ['',' ','\n','<','>','\"','\'',',','.',';'],
-	chunks:(process.argv.indexOf('-c')+1 && (process.argv[process.argv.indexOf('-c')+1]).split(',').reverse()) || [300,100,50,20,10,5,4,3,2,1].reverse(),
+	chunks:(process.argv.indexOf('-c')+1 && (process.argv[process.argv.indexOf('-c')+1]).split(',').reverse()) || [10000,5000,1000,300,100,50,20,10,5,4,3,2,1].reverse(),
 	temp:(process.argv.indexOf('-temp')+1 && (process.argv[process.argv.indexOf('-temp')+1])) || undefined,
 	realtime:(process.argv.indexOf('-realtime')+1 && (process.argv[process.argv.indexOf('-realtime')+1])) || false,
-
+	instrument:(process.argv.indexOf('--inst')+1 && path.resolve(process.argv[process.argv.indexOf('--inst')+1])) || './spawn.js',
+	dontSaveNew:(process.argv.indexOf('--nosave')+1) && true || false
 }
+
+var targetControl=require(config.instrument)
+
 
 if(!config.temp)
 	config.temp=config.outputDirectory
@@ -95,6 +98,7 @@ var chunkSize=config.chunks.pop()
 var currentConfig=JSON.parse(JSON.stringify(config))
 var currentDelimiter=currentConfig.delimiters.pop()
 var previousIteration=fs.readFileSync(config.inputFile).toString('binary')
+var crypto=require('crypto')
 var tmpDelimiter=""
 console.log('Original file size: '+previousIteration.length)
 previousIteration=fs.readFileSync(config.inputFile).toString('binary').split(currentDelimiter)
@@ -130,7 +134,7 @@ function minimizeFurther(){
 		else{
 			console.log('\nFinished')
 			var fileName=config.outputDirectory+'/'+crashFingerPrint+path.extname(config.inputFile)
-			fs.writeFileSync(fileName, previousIteration.join(currentDelimiter));
+			fs.writeFileSync(fileName, new Buffer(previousIteration.join(currentDelimiter),'binary'));
 			process.exit(1)
 		}
 	}
@@ -143,6 +147,7 @@ function minimizeFurther(){
 var crashFingerPrint=""
 var crashCount=0
 var triesWithoutCrash=0
+
 function minimize(){
 	var testCase=new Buffer(minimizeFurther(),'binary')
 	if(testCase.length!=0){
@@ -156,32 +161,34 @@ function minimize(){
 	    process.stdout.write('TestCaseLength: '+testCase.length+' Delimiter: "'+tmpDelimiter+'" ChunkSize: '+chunkSize+' IterationsLeft: '+Math.round((lastFalse-(lastFalse%chunkSize))/chunkSize)+' CrashCount: '+crashCount+' ')
 		if(config.realtime)
 			process.stdout.write('\n'+testCase.toString('binary'))
+
 		fs.writeFileSync(config.temp+'/'+path.basename(config.inputFile)+'-temp'+path.extname(config.inputFile),testCase)
-		var target=spawnTarget(config.target,config.args,config.timeout)
-		target.on('crash',function(crash){
-			if(crash!==null){
+		var target=targetControl.spawnTarget(config.target,config.args,config.timeout)
+		target.on('crash',function(currentCrash){
+			if(currentCrash!==null){
 				if(crashFingerPrint==""){
-					console.log('\nInitial crash: '+crash)
-					if(fs.existsSync(config.outputDirectory+'/'+crash+path.extname(config.inputFile))){
-						console.log('We already have this crash in output directory. Exiting...')
+					console.log('\nInitial currentCrash: '+currentCrash)
+					if(fs.existsSync(config.outputDirectory+'/'+currentCrash+path.extname(config.inputFile))){
+						console.log('We already have this currentCrash in output directory. Exiting...')
 						process.exit()	
 					}
-					crashFingerPrint=crash
+					crashFingerPrint=currentCrash
 					previousIteration=cloneArray(currentIteration)
 				}
-				else if(crashFingerPrint==crash){
+				else if(crashFingerPrint==currentCrash){
 					crashCount++
 					previousIteration=cloneArray(currentIteration)
 				}
-				else{
-					if(!fs.existsSync(config.outputDirectory+'/'+crash+path.extname(config.inputFile))){
-						console.log('Different crash.')
-						console.log('Saving different crash to :'+config.outputDirectory+'/'+crash+path.extname(config.inputFile))
-						fs.writeFileSync(config.outputDirectory+'/'+crash+path.extname(config.inputFile),testCase)	
+				else if(!config.dontSaveNew){
+					if(!fs.existsSync(config.outputDirectory+'/'+currentCrash+path.extname(config.inputFile)) && !fs.existsSync(config.outputDirectory+'/new-'+currentCrash+path.extname(config.inputFile))){
+						console.log('New crash.')
+						console.log('Saving new crash to : '+config.outputDirectory+'/new-'+currentCrash+path.extname(config.inputFile))
+						fs.writeFileSync(config.outputDirectory+'/new-'+currentCrash+path.extname(config.inputFile),testCase)	
 					}
 				}
 			}else if(crashFingerPrint==""){
 				console.log("Crash didn't reproduce... Try: "+triesWithoutCrash++)
+				lastFalse=undefined
 				if(triesWithoutCrash>10)
 					process.exit()
 			}
@@ -217,7 +224,7 @@ stdin.on( 'data', function( key ){
 setTimeout(function(){
 process.on('SIGINT', function() {
 	var fileName=path.dirname(config.inputFile)+'/'+path.basename(config.inputFile)+'-abort'+path.extname(config.inputFile)
-	fs.writeFileSync(fileName, currentIteration.join(currentDelimiter));
+	fs.writeFileSync(fileName, new Buffer(currentIteration.join(currentDelimiter),'binary'));
 	console.log("Aborted minimization. Current iteration written.")
 	process.exit()
 })

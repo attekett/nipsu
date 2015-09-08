@@ -59,7 +59,12 @@ function spawnTarget(target,args,timeout){
 		if(stderr!="" || data.toString().indexOf('ERROR: AddressSanitizer')!=-1){
 			var newData=data.toString()
 			stderr+=newData
+			clearTimeout(target.timeout)
+			target.timeout=setTimeout(function(){
+				target.kill('SIGKILL')
+			},1000)
 			if(newData.indexOf('=='+target.pid+'==ABORTING')!=-1){
+				clearTimeout(target.timeout)				
 				target.kill('SIGKILL')
 			}
 		}
@@ -77,4 +82,6 @@ function spawnTarget(target,args,timeout){
 	return target	
 }
 
-module.exports=spawnTarget
+module.exports={
+	spawnTarget:spawnTarget
+}
