@@ -21,7 +21,8 @@ var config={
 	temp:(process.argv.indexOf('-temp')+1 && (process.argv[process.argv.indexOf('-temp')+1])) || undefined,
 	realtime:(process.argv.indexOf('-realtime')+1 && (process.argv[process.argv.indexOf('-realtime')+1])) || false,
 	instrument:(process.argv.indexOf('--inst')+1 && path.resolve(process.argv[process.argv.indexOf('--inst')+1])) || './spawn.js',
-	dontSaveNew:(process.argv.indexOf('--nosave')+1) && true || false
+	dontSaveNew:(process.argv.indexOf('--nosave')+1) && true || false,
+	outputFile:(process.argv.indexOf('-f')+1 && path.resolve(process.argv[process.argv.indexOf('-f')+1])) || false,
 }
 
 var targetControl=require(config.instrument)
@@ -36,7 +37,7 @@ else if(!fs.existsSync(config.temp)){
 }
 
 
-var flags=['--debug','-temp','-i','-o','-t','-d','-c','-realtime']
+var flags=['--debug','-temp','-i','-o','-t','-d','-c','-realtime','--inst','-f','--nosave']
 var lastFlag=0
 for(var x in process.argv){
 	if(flags.indexOf(process.argv[x])!=-1){
@@ -51,6 +52,9 @@ for(var x in process.argv){
 
 config.target=path.resolve(process.argv[lastFlag+1])
 config.args=process.argv.slice(lastFlag+2,process.argv.length)
+
+if(config.outputFile)
+	config.outputDirectory=path.dirname(config.outputDirectory)
 
 if(!fs.existsSync(config.target)){
 	console.log('Target does not exists: '+config.target)
@@ -134,7 +138,10 @@ function minimizeFurther(){
 		else{
 			console.log('\nFinished')
 			var fileName=config.outputDirectory+'/'+crashFingerPrint+path.extname(config.inputFile)
-			fs.writeFileSync(fileName, new Buffer(previousIteration.join(currentDelimiter),'binary'));
+			if(!config.outputFile)
+				fs.writeFileSync(fileName, new Buffer(previousIteration.join(currentDelimiter),'binary'));
+			else
+				fs.writeFileSync(config.outputFile, new Buffer(previousIteration.join(currentDelimiter),'binary'));
 			process.exit(1)
 		}
 	}
