@@ -180,26 +180,24 @@ function minimize () {
   }
 }
 
+if (process.stdin.isTTY) {
+  var stdin = process.stdin
 
+  stdin.setRawMode(true)
+  stdin.resume()
 
-var stdin = process.stdin;
+  stdin.setEncoding('utf8')
 
-stdin.setRawMode( true );
-stdin.resume();
-
-stdin.setEncoding( 'utf8' );
-
-stdin.on( 'data', function( key ){
-
-
-  if ( key === '\u0003' ) {
-    process.emit('SIGINT');
-  }else if(key ==='r'){
-  	config.realtime=~config.realtime
-  }
-});
-
-
+  stdin.on('data', function (key) {
+    if (key === '\u0003') {
+      process.emit('SIGINT')
+    } else if (key === 'r') {
+      config.realtime = ~config.realtime
+    }
+  })
+} else {
+  console.log('Running without TTY, no awesome realtime mode available, :(')
+}
 
 setTimeout(function () {
   process.on('SIGINT', function () {
