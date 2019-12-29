@@ -1,8 +1,9 @@
 {
   "name": "nipsu",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Crash test case minifier for ASan-built commandline tools.",
   "main": "nipsu.js",
+  "bin": { "nipsu": "nipsu.js" },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
