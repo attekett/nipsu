@@ -21,19 +21,33 @@ var config = {
   chunks: (process.argv.indexOf('-c') + 1 && (process.argv[process.argv.indexOf('-c') + 1]).split(',').reverse()) || [10000, 5000, 1000, 300, 100, 50, 20, 10, 5, 4, 3, 2, 1].reverse(),
   temp: (process.argv.indexOf('-temp') + 1 && (process.argv[process.argv.indexOf('-temp') + 1])) || undefined,
   realtime: (process.argv.indexOf('-realtime') + 1 && (process.argv[process.argv.indexOf('-realtime') + 1])) || false,
-  instrument: (process.argv.indexOf('--inst') + 1 && path.resolve(process.argv[process.argv.indexOf('--inst') + 1])) || './spawn.js',
+  instrument: (process.argv.indexOf('-inst') + 1 && path.resolve(process.argv[process.argv.indexOf('-inst') + 1])) || './spawn.js',
   // eslint-disable-next-line no-mixed-operators
-  dontSaveNew: (process.argv.indexOf('--nosave') + 1) && true || false,
+  dontSaveNew: (process.argv.indexOf('-nosave') + 1) && true || false,
   outputFile: (process.argv.indexOf('-f') + 1 && path.resolve(process.argv[process.argv.indexOf('-f') + 1])) || false
 }
 
-var targetControl = require(config.instrument)
-
-if (!config.temp) { config.temp = config.outputDirectory } else if (!fs.existsSync(config.temp)) {
-  console.log('Output directory does not exist: ' + config.temp)
-  console.log('Trying to create specified folder.')
-  fs.mkdirSync(config.temp)
+if (process.argv.length === 2 || process.argv.indexOf('--help') !== -1 || process.argv.indexOf('-h') !== -1) {
+  console.log('Nipsu by Atte Kettunen')
+  console.log('Crash repro minifier for ASan-instrumented commandline tools.')
+  console.log('Usage: node nipsu.js -i <input-file> [-temp <temp-dir>] -o <output-dir> <target-bin> [args] @@')
+  console.log('    @@ will be replaced with temp-file name.')
+  console.log('Commandline flags:')
+  console.log('  -temp, Directory for temporary file, if missing will be created and removed.')
+  console.log('  -i,    Input file')
+  console.log('  -o,    Output directory')
+  console.log('  -t,    Timeout in seconds (default: 1)')
+  console.log('  -d,    List of delimiters for rounds (default: \'\',\' \',\'\\n\',\'<\',\'>\',\'\\"\',\'\\\'\',\',\',\'.\',\';\')')
+  console.log('  -c,    List of chunk sizes for rounds (default: 300,100,50,20,10,5,4,3,2,1)')
+  console.log('  -f,  Don\'t use crash fingerprint as file output file name.')
+  console.log('  -inst,  Load custom instrumentation module.')
+  console.log('  -nosave,  Don\'t save new crashes during minimization.')
+  console.log('  -realtime, Awesome realtime mode. Works only in TTY. Console prints current test case. (Runtime toggle by pressing \'r\'.)')
+  console.log('  Warning: realtime-mode can mess up your console with binary files.')
+  process.exit()
 }
+
+if (!config.temp) { config.temp = config.outputDirectory }
 
 var flags = ['--debug', '-temp', '-i', '-o', '-t', '-d', '-c', '-realtime', '--inst', '-f', '--nosave']
 var lastFlag = 0
@@ -43,6 +57,8 @@ for (var x in process.argv) {
     if (process.argv[x] === '--debug') { lastFlag = x } else { lastFlag = (parseInt(x) + 1) }
   }
 }
+
+var targetControl = require(config.instrument)
 
 config.target = path.resolve(process.argv[lastFlag + 1])
 config.args = process.argv.slice(lastFlag + 2, process.argv.length)
@@ -54,11 +70,22 @@ if (!fs.existsSync(config.target)) {
   process.exit()
 }
 
+config.tempFile = config.temp + '/' + path.basename(config.inputFile) + '-temp' + path.extname(config.inputFile)
 if (config.args.indexOf('@@') === -1) {
-  console.log('No place for test case specified: ' + process.argv.join(' '))
-  process.exit()
+  var found = false
+  for (var z = 0; z < config.args.length; z++) {
+    if (config.args[z].indexOf('@@') !== -1) {
+      found = true
+      config.args[z] = config.args[z].replace('@@', config.tempFile)
+    }
+  }
+  if (!found) {
+    console.log('No place for test case specified: ' + process.argv.join(' '))
+    process.exit()
+  }
+} else {
+  config.args[config.args.indexOf('@@')] = config.tempFile
 }
-config.args[config.args.indexOf('@@')] = config.temp + '/' + path.basename(config.inputFile) + '-temp' + path.extname(config.inputFile)
 
 for (var y in config) {
   if (config[y] === undefined && y !== 'debug') {
@@ -85,6 +112,16 @@ if (!fs.existsSync(config.outputDirectory)) {
   console.log('Output directory is actually a file: ' + config.outputDirectory)
   process.exit()
 }
+
+var tempCreated = false
+
+if (!fs.existsSync(config.temp)) {
+  console.log('Temp directory does not exist: ' + config.temp)
+  console.log('Trying to create specified folder.')
+  fs.mkdirSync(config.temp)
+  tempCreated = true
+}
+
 var currentIteration = []
 var lastFalse
 
@@ -94,7 +131,16 @@ var currentDelimiter = currentConfig.delimiters.pop()
 var previousIteration = fs.readFileSync(config.inputFile).toString('binary')
 var tmpDelimiter = ''
 console.log('Original file size: ' + previousIteration.length)
-previousIteration = fs.readFileSync(config.inputFile).toString('binary').split(currentDelimiter)
+previousIteration = previousIteration.split(currentDelimiter)
+
+function cleanupTemp () {
+  if (fs.existsSync(config.tempFile)) {
+    fs.unlinkSync(config.tempFile)
+  }
+  if (tempCreated && fs.readdirSync(config.temp).length !== 0) {
+    fs.rmdirSync(config.temp)
+  }
+}
 
 function minimizeFurther () {
   currentIteration = cloneArray(previousIteration)
@@ -122,7 +168,12 @@ function minimizeFurther () {
     } else {
       console.log('\nFinished')
       var fileName = config.outputDirectory + '/' + crashFingerPrint + path.extname(config.inputFile)
-      if (!config.outputFile) { fs.writeFileSync(fileName, Buffer.from(previousIteration.join(currentDelimiter), 'binary')) } else { fs.writeFileSync(config.outputFile, Buffer.from(previousIteration.join(currentDelimiter), 'binary')) }
+      if (!config.outputFile) {
+        fs.writeFileSync(fileName, Buffer.from(previousIteration.join(currentDelimiter), 'binary'))
+      } else {
+        fs.writeFileSync(config.outputFile, Buffer.from(previousIteration.join(currentDelimiter), 'binary'))
+      }
+      cleanupTemp()
       process.exit(1)
     }
   }
@@ -146,7 +197,7 @@ function minimize () {
     process.stdout.write('TestCaseLength: ' + testCase.length + ' Delimiter: "' + tmpDelimiter + '" ChunkSize: ' + chunkSize + ' IterationsLeft: ' + Math.round((lastFalse - (lastFalse % chunkSize)) / chunkSize) + ' CrashCount: ' + crashCount + ' ')
     if (config.realtime) { process.stdout.write('\n' + testCase.toString('binary')) }
 
-    fs.writeFileSync(config.temp + '/' + path.basename(config.inputFile) + '-temp' + path.extname(config.inputFile), testCase)
+    fs.writeFileSync(config.tempFile, testCase)
     var target = targetControl.spawnTarget(config.target, config.args, config.timeout)
     target.on('crash', function (currentCrash) {
       if (currentCrash !== null) {
@@ -154,6 +205,7 @@ function minimize () {
           console.log('\nInitial currentCrash: ' + currentCrash)
           if (fs.existsSync(config.outputDirectory + '/' + currentCrash + path.extname(config.inputFile))) {
             console.log('We already have this currentCrash in output directory. Exiting...')
+            cleanupTemp()
             process.exit()
           }
           crashFingerPrint = currentCrash
@@ -171,7 +223,10 @@ function minimize () {
       } else if (crashFingerPrint === '') {
         console.log("Crash didn't reproduce... Try: " + triesWithoutCrash++)
         lastFalse = undefined
-        if (triesWithoutCrash > 10) { process.exit() }
+        if (triesWithoutCrash > 10) {
+          cleanupTemp()
+          process.exit()
+        }
       }
       minimize()
     })
@@ -196,13 +251,14 @@ if (process.stdin.isTTY) {
     }
   })
 } else {
-  console.log('Running without TTY, no awesome realtime mode available, :(')
+  console.log('Running without TTY, no awesome realtime mode available. :(')
 }
 
 setTimeout(function () {
   process.on('SIGINT', function () {
     var fileName = path.dirname(config.inputFile) + '/' + path.basename(config.inputFile) + '-abort' + path.extname(config.inputFile)
     fs.writeFileSync(fileName, Buffer.from(currentIteration.join(currentDelimiter), 'binary'))
+    cleanupTemp()
     console.log('Aborted minimization. Current iteration written.')
     process.exit()
   })
